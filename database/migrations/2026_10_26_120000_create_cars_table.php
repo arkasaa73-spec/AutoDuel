@@ -1,0 +1,28 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('cars', function (Blueprint $table) {
+            $table->id();
+            $table->string('brand');
+            $table->string('model');
+            $table->unsignedSmallInteger('year');
+            $table->unsignedSmallInteger('hp');
+            $table->unsignedInteger('price'); // USD, ориентир по базовой комплектации
+            $table->string('image_path')->nullable(); // путь внутри storage/app/public
+            $table->string('image_credit')->nullable(); // автор и лицензия фото
+            $table->timestamps();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('cars');
+    }
+};

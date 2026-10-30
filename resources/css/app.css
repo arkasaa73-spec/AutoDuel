@@ -1,0 +1,106 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Alpine прячет элементы с x-cloak, пока не загрузится */
+[x-cloak] { display: none !important; }
+
+@layer base {
+    html { scroll-behavior: smooth; }
+
+    body { @apply bg-paper font-sans text-ink antialiased; }
+
+    :focus-visible {
+        outline: 3px solid theme('colors.ink.DEFAULT');
+        outline-offset: 3px;
+    }
+}
+
+@layer components {
+    .btn {
+        @apply inline-flex items-center justify-center gap-2 border-2 border-ink px-5 py-3
+               font-display text-base font-semibold uppercase tracking-wider
+               transition duration-150;
+    }
+    .btn-primary {
+        @apply bg-signal text-ink shadow-hard-sm
+               hover:-translate-y-0.5 hover:shadow-hard
+               active:translate-y-0 active:shadow-none;
+    }
+    .btn-dark { @apply bg-ink text-paper hover:bg-signal hover:text-ink; }
+    .btn-ghost { @apply bg-transparent text-ink hover:bg-ink hover:text-paper; }
+
+    /* Маленький заголовок-«бровка» над крупными заголовками */
+    .eyebrow {
+        @apply font-display text-sm font-medium uppercase text-ink-muted;
+        letter-spacing: 0.2em;
+    }
+    .eyebrow::before {
+        content: '';
+        display: inline-block;
+        width: 2rem;
+        height: 3px;
+        margin-right: 0.75rem;
+        vertical-align: middle;
+        background: theme('colors.signal.DEFAULT');
+    }
+
+    /* Пунктир дорожной разметки */
+    .road-line {
+        height: 6px;
+        background: repeating-linear-gradient(
+            90deg,
+            theme('colors.signal.DEFAULT') 0 32px,
+            transparent 32px 56px
+        );
+    }
+
+    /* Заглушка вместо фото в демо-карточках */
+    .hatch {
+        background: repeating-linear-gradient(
+            135deg,
+            theme('colors.paper.deep') 0 10px,
+            theme('colors.line') 10px 12px
+        );
+    }
+
+    /* Карточка машины в игре */
+    .duel-card {
+        @apply flex h-full w-full flex-col border-2 border-ink bg-white text-left shadow-hard
+               transition duration-150;
+    }
+    .duel-card:enabled:hover { @apply -translate-y-1; }
+    .duel-card:disabled { @apply cursor-default; }
+    .duel-card[data-state='correct'] {
+        border-color: theme('colors.go');
+        box-shadow: 6px 6px 0 0 theme('colors.go');
+    }
+    .duel-card[data-state='wrong'] {
+        border-color: theme('colors.brake');
+        box-shadow: 6px 6px 0 0 theme('colors.brake');
+    }
+    .duel-card[data-state='dim'] { opacity: 0.55; }
+    .duel-card[data-state='correct'] .duel-value,
+    .duel-card[data-state='correct'] [data-slot='verdict'] { color: theme('colors.go'); }
+    .duel-card[data-state='wrong'] .duel-value,
+    .duel-card[data-state='wrong'] [data-slot='verdict'] { color: theme('colors.brake'); }
+}
+
+/* Появление новой карточки справа */
+@keyframes card-enter {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: none; }
+}
+.card-enter { animation: card-enter 0.35s ease-out; }
+
+/* Чекбоксы Breeze задают text-indigo-600, перекрашиваем под нашу палитру */
+input[type='checkbox'],
+input[type='radio'] {
+    color: theme('colors.ink.DEFAULT');
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    * { transition-duration: 0.01ms !important; }
+    .card-enter { animation: none; }
+}
