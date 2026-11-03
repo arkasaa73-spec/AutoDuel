@@ -2,31 +2,49 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\GameLevel;
 use App\Enums\GameMode;
 use App\Http\Requests\GameAnswerRequest;
+use App\Http\Requests\GameStartRequest;
 use App\Models\Car;
 use App\Models\GameRun;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 
 class GameController extends Controller
 {
-    // Страница игры: сама партия стартует запросом из JS
+    // Страница игры: уровень выбирается на ней, партия стартует запросом из JS
     public function show(GameMode $mode): View
     {
         return view('game.show', ['mode' => $mode]);
     }
 
     // Старт партии: состояние живёт в сессии на сервере, клиент его не меняет
-    public function start(GameMode $mode): JsonResponse
+    public function start(GameStartRequest $request, GameMode $mode): JsonResponse
     {
-        $left = Car::inRandomOrder()->first();
-        $right = $left ? $this->pickNext($mode, $left, [$left->id]) : null;
+        $level = GameLevel::from($request->validated('level'));
 
-        abort_if(! $left || ! $right, 503, 'В базе недостаточно машин для игры.');
+        // Первая машина обязана иметь пару подходящей сложности.
+        // Так "одинокие" машины вроде Bugatti по цене не выпадают совсем
+        $left = $right = null;
+        foreach (Car::inRandomOrder()->get() as $candidate) {
+            $partner = $this->candidates($mode, $candidate, $level->minRatio(), $level->maxRatio())
+                ->inRandomOrder()
+                ->first();
+
+            if ($partner) {
+                $left = $candidate;
+                $right = $partner;
+                break;
+            }
+        }
+
+        abort_if(! $left, 503, 'В базе недостаточно машин для игры.');
 
         session()->put($this->key($mode), [
+            'level' => $level->value,
             'score' => 0,
             'left' => $left->id,
             'right' => $right->id,
@@ -35,6 +53,7 @@ class GameController extends Controller
 
         return response()->json([
             'score' => 0,
+            'level' => $level->value,
             'left' => $this->publicCar($left, $mode, true),
             'right' => $this->publicCar($right, $mode), // значение скрыто
         ]);
@@ -45,6 +64,7 @@ class GameController extends Controller
         $state = session($this->key($mode));
         abort_if(! $state, 409, 'Партия не начата.');
 
+        $level = GameLevel::tryFrom($state['level'] ?? '') ?? GameLevel::Medium;
         $left = Car::find($state['left']);
         $right = Car::find($state['right']);
 
@@ -75,33 +95,38 @@ class GameController extends Controller
             $score = $state['score'];
             session()->forget($this->key($mode));
 
-            // Гость играет без сохранения, у авторизованного партия идёт в рейтинг
-            $saved = Auth::check();
-            if ($saved) {
-                GameRun::create(['user_id' => Auth::id(), 'mode' => $mode->value, 'score' => $score]);
-            }
-
-            return response()->json($payload + ['score' => $score, 'game_over' => true, 'saved' => $saved]);
+            return response()->json($payload + [
+                'score' => $score,
+                'game_over' => true,
+                'saved' => $this->saveRun($mode, $level, $score),
+            ]);
         }
 
         // Счёт увеличивается только здесь, клиент его не присылает
         $score = $state['score'] + 1;
         $winner = $winnerSide === 'left' ? $left : $right; // победитель остаётся слева
-        $used = $state['used'];
 
-        $next = $this->pickNext($mode, $winner, $used);
-        if (! $next) {
-            // Весь список показан: начинаем новый круг, победитель остаётся
-            $used = [$winner->id];
-            $next = $this->pickNext($mode, $winner, $used);
+        $pair = $this->nextPair($mode, $level, $winner, $state['used']);
+
+        // Подходящие машины закончились: партия завершается победой, счёт = число верных ответов
+        if (! $pair) {
+            session()->forget($this->key($mode));
+
+            return response()->json($payload + [
+                'score' => $score,
+                'game_over' => true,
+                'completed' => true,
+                'saved' => $this->saveRun($mode, $level, $score),
+            ]);
         }
-        abort_if(! $next, 503, 'В базе недостаточно машин для игры.');
 
-        $used[] = $next->id;
+        [$nextLeft, $nextRight, $used] = $pair;
+
         session()->put($this->key($mode), [
+            'level' => $level->value,
             'score' => $score,
-            'left' => $winner->id,
-            'right' => $next->id,
+            'left' => $nextLeft->id,
+            'right' => $nextRight->id,
             'used' => $used,
         ]);
 
@@ -109,10 +134,27 @@ class GameController extends Controller
             'score' => $score,
             'game_over' => false,
             'next' => [
-                'left' => $this->publicCar($winner, $mode, true),
-                'right' => $this->publicCar($next, $mode),
+                'left' => $this->publicCar($nextLeft, $mode, true),
+                'right' => $this->publicCar($nextRight, $mode),
             ],
         ]);
+    }
+
+    // Гость играет без сохранения, у авторизованного партия идёт в статистику и рейтинг
+    private function saveRun(GameMode $mode, GameLevel $level, int $score): bool
+    {
+        if (! Auth::check()) {
+            return false;
+        }
+
+        GameRun::create([
+            'user_id' => Auth::id(),
+            'mode' => $mode->value,
+            'difficulty' => $level->value,
+            'score' => $score,
+        ]);
+
+        return true;
     }
 
     // Ключ сессии: у каждого режима своя партия
@@ -121,16 +163,64 @@ class GameController extends Controller
         return 'game.' . $mode->value;
     }
 
-    // Случайная машина, которой ещё не было в партии и с другим значением (пары с равенством не показываем)
-    private function pickNext(GameMode $mode, Car $current, array $used): ?Car
+    // Машины, значение которых отличается от значения $current в $minRatio...$maxRatio раз (в любую сторону).
+    // $maxRatio = null снимает верхнюю границу
+    private function candidates(GameMode $mode, Car $current, float $minRatio, ?float $maxRatio): Builder
     {
         $column = $mode->column();
+        $value = (int) $current->{$column};
 
         return Car::query()
+            ->where('id', '!=', $current->id)
+            ->where(function (Builder $query) use ($column, $value, $minRatio, $maxRatio) {
+                // Вариант 1: значение выше текущего
+                $query->where(function (Builder $up) use ($column, $value, $minRatio, $maxRatio) {
+                    $up->where($column, '>=', (int) ceil($value * $minRatio));
+                    if ($maxRatio !== null) {
+                        $up->where($column, '<=', (int) floor($value * $maxRatio));
+                    }
+                })
+                // Вариант 2: значение ниже текущего
+                ->orWhere(function (Builder $down) use ($column, $value, $minRatio, $maxRatio) {
+                    $down->where($column, '<=', (int) floor($value / $minRatio));
+                    if ($maxRatio !== null) {
+                        $down->where($column, '>=', (int) ceil($value / $maxRatio));
+                    }
+                });
+            });
+    }
+
+    // Следующая пара после верного ответа. Каждая машина показывается за партию не больше одного раза.
+    // Возвращает [левая машина, правая машина, обновлённый список показанных] или null, если машины закончились
+    private function nextPair(GameMode $mode, GameLevel $level, Car $winner, array $used): ?array
+    {
+        $min = $level->minRatio();
+        $max = $level->maxRatio();
+
+        // 1) Победитель остаётся, ему подбираем ещё не показанного соперника подходящей сложности
+        $next = $this->candidates($mode, $winner, $min, $max)
             ->whereNotIn('id', $used)
-            ->where($column, '!=', $current->{$column})
             ->inRandomOrder()
             ->first();
+
+        if ($next) {
+            return [$winner, $next, [...$used, $next->id]];
+        }
+
+        // 2) У победителя подходящие соперники кончились: берём новую пару из ещё не показанных машин
+        foreach (Car::query()->whereNotIn('id', $used)->inRandomOrder()->get() as $left) {
+            $partner = $this->candidates($mode, $left, $min, $max)
+                ->whereNotIn('id', [...$used, $left->id])
+                ->inRandomOrder()
+                ->first();
+
+            if ($partner) {
+                return [$left, $partner, [...$used, $left->id, $partner->id]];
+            }
+        }
+
+        // 3) Пар подходящей сложности не осталось: машины закончились
+        return null;
     }
 
     // Данные машины для клиента. Скрытое значение отдаём только если withValue = true

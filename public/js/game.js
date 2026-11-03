@@ -14,8 +14,14 @@
     };
     const scoreEl = document.getElementById('score');
     const hintEl = document.getElementById('hint');
+    const pickerEl = document.getElementById('picker');
+    const arenaEl = document.getElementById('arena');
+    const levelBar = document.getElementById('level-bar');
+    const levelChip = document.getElementById('level-chip');
     const overEl = document.getElementById('over');
     const finalScoreEl = document.getElementById('final-score');
+    const overTitle = document.getElementById('over-title');
+    const noteCompleted = document.getElementById('note-completed');
     const noteSaved = document.getElementById('note-saved');
     const noteGuest = document.getElementById('note-guest');
     const restartBtn = document.getElementById('restart');
@@ -23,6 +29,7 @@
     const HINT_READY = 'Слева значение известно, справа скрыто. Нажми на машину, у которой оно больше.';
 
     let busy = false; // пока идёт запрос или показ ответа, клики игнорируются
+    let level = null; // выбранный уровень: { key, label }
 
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -89,7 +96,18 @@
         hintEl.textContent = text;
     }
 
-    // Показываем результат: победившая карточка зелёная, неверный выбор красный
+    // Экран выбора уровня
+    function showPicker() {
+        busy = false;
+        pickerEl.hidden = false;
+        arenaEl.hidden = true;
+        overEl.hidden = true;
+        levelBar.hidden = true;
+        scoreEl.textContent = '0';
+        setHint('Выбери уровень сложности.');
+    }
+
+    // Победившая карточка зелёная, неверный выбор красный
     function reveal(chosen, data) {
         ['left', 'right'].forEach((side) => {
             const card = cardOf(side);
@@ -109,6 +127,9 @@
     }
 
     function showOver(data) {
+        const completed = Boolean(data.completed);
+        overTitle.textContent = completed ? 'Все машины пройдены' : 'Партия окончена';
+        noteCompleted.hidden = !completed;
         finalScoreEl.textContent = data.score;
         noteSaved.hidden = !data.saved;
         noteGuest.hidden = data.saved;
@@ -138,7 +159,7 @@
         try {
             const data = await api(answerUrl, { choice: side });
             reveal(side, data);
-            setHint(data.correct ? 'Верно! +1 к счёту.' : 'Неверно.');
+            setHint(data.completed ? 'Верно! Подходящие машины закончились.' : (data.correct ? 'Верно! +1 к счёту.' : 'Неверно.'));
             scoreEl.textContent = data.score;
 
             await sleep(data.correct ? 1500 : 1800);
@@ -158,14 +179,23 @@
         }
     }
 
-    async function start() {
+    async function start(chosen = level) {
+        if (!chosen) { showPicker(); return; }
+
+        level = chosen;
         busy = true;
+        pickerEl.hidden = true;
+        arenaEl.hidden = false;
         overEl.hidden = true;
+        levelBar.hidden = false;
+        levelChip.textContent = 'Уровень: ' + level.label;
         scoreEl.textContent = '0';
+        slots.left.replaceChildren();
+        slots.right.replaceChildren();
         setHint('Загружаем машины...');
 
         try {
-            const data = await api(startUrl);
+            const data = await api(startUrl, { level: level.key });
             renderCard('left', data.left);
             renderCard('right', data.right);
             setHint(HINT_READY);
@@ -175,6 +205,15 @@
         }
     }
 
-    restartBtn.addEventListener('click', start);
-    start();
+    pickerEl.querySelectorAll('[data-level]').forEach((button) => {
+        button.addEventListener('click', () => {
+            start({ key: button.dataset.level, label: button.dataset.label });
+        });
+    });
+    document.querySelectorAll('.js-change-level').forEach((button) => {
+        button.addEventListener('click', showPicker);
+    });
+    restartBtn.addEventListener('click', () => start());
+
+    showPicker();
 })();

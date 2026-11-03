@@ -1,6 +1,8 @@
 @php
-    // Временно считаем машины прямо здесь, позже вынесем в контроллер
+    // Временно берём данные прямо здесь, позже вынесем в контроллер
     $carsCount = \App\Models\Car::count();
+    $topPrice = \App\Models\GameRun::leaderboard(\App\Enums\GameMode::Price, \App\Enums\GameLevel::Medium, false, 5);
+    $topHp = \App\Models\GameRun::leaderboard(\App\Enums\GameMode::Hp, \App\Enums\GameLevel::Medium, false, 5);
 @endphp
 
 <x-app-layout>
@@ -9,8 +11,8 @@
         <div class="mx-auto grid max-w-6xl gap-12 px-4 py-12 sm:px-6 lg:grid-cols-[1.05fr_1fr] lg:items-center lg:py-20">
             <div>
                 <p class="eyebrow">Автомобильная викторина</p>
-                <h1 class="mt-5 font-display text-5xl font-bold uppercase leading-[0.95] tracking-tight sm:text-7xl">
-                    У какой машины <span class="bg-signal px-2">больше?</span>
+                <h1 class="mt-5 font-display text-5xl font-bold uppercase leading-[1.08] tracking-tight sm:text-7xl">
+                    У какой машины <span class="mt-2 inline-block bg-signal px-3 py-1 leading-none">больше?</span>
                 </h1>
                 <p class="mt-6 max-w-xl text-lg text-ink-soft">
                     Две машины на экране и один вопрос: у какой выше цена или мощнее мотор.
@@ -61,14 +63,18 @@
 
     {{-- ЦИФРЫ --}}
     <section class="bg-ink text-paper">
-        <dl class="mx-auto grid max-w-6xl grid-cols-1 divide-y divide-paper/15 px-4 sm:grid-cols-2 sm:divide-x sm:divide-y-0 sm:px-6">
+        <dl class="mx-auto grid max-w-6xl grid-cols-1 divide-y divide-paper/15 px-4 sm:grid-cols-3 sm:divide-x sm:divide-y-0 sm:px-6">
             <div class="py-6 sm:pr-8">
                 <dt class="font-display text-sm uppercase tracking-widest text-paper/60">Машин в базе</dt>
                 <dd class="mt-1 font-display text-5xl font-bold text-signal">{{ $carsCount }}</dd>
             </div>
-            <div class="py-6 sm:pl-8">
+            <div class="py-6 sm:px-8">
                 <dt class="font-display text-sm uppercase tracking-widest text-paper/60">Режима игры</dt>
                 <dd class="mt-1 font-display text-5xl font-bold text-signal">2</dd>
+            </div>
+            <div class="py-6 sm:pl-8">
+                <dt class="font-display text-sm uppercase tracking-widest text-paper/60">Уровня сложности</dt>
+                <dd class="mt-1 font-display text-5xl font-bold text-signal">3</dd>
             </div>
         </dl>
     </section>
@@ -103,6 +109,37 @@
         </div>
     </section>
 
+    {{-- КРАТКИЙ ТОП --}}
+    <section class="border-t-2 border-ink">
+        <div class="mx-auto max-w-6xl px-4 py-16 sm:px-6">
+            <div class="flex flex-wrap items-end justify-between gap-4">
+                <div>
+                    <p class="eyebrow">Рейтинг</p>
+                    <h2 class="mt-4 font-display text-4xl font-bold uppercase tracking-tight sm:text-5xl">Лучшие игроки</h2>
+                    <p class="mt-2 text-ink-soft">Уровень «Опытный», за всё время.</p>
+                </div>
+                <a href="{{ route('leaderboard') }}" class="btn btn-ghost">Весь рейтинг</a>
+            </div>
+
+            <div class="mt-8 grid gap-6 md:grid-cols-2">
+                @foreach ([['Цена', $topPrice], ['Мощность', $topHp]] as [$title, $top])
+                    <div class="border-2 border-ink bg-white shadow-hard-sm">
+                        <p class="bg-ink px-4 py-2.5 font-display text-sm uppercase tracking-widest text-signal">{{ $title }}</p>
+                        @forelse ($top as $row)
+                            <div class="flex items-center gap-3 border-b border-line px-4 py-2.5 last:border-b-0">
+                                <span class="grid h-8 w-8 shrink-0 place-items-center border-2 border-ink font-display font-bold {{ $loop->iteration <= 3 ? 'bg-signal' : 'bg-white' }}">{{ $loop->iteration }}</span>
+                                <span class="min-w-0 flex-1 truncate">{{ $row->name }}</span>
+                                <span class="font-display text-2xl font-bold">{{ $row->best }}</span>
+                            </div>
+                        @empty
+                            <p class="px-4 py-6 text-ink-soft">Пока никого. Сыграй партию и займи первое место.</p>
+                        @endforelse
+                    </div>
+                @endforeach
+            </div>
+        </div>
+    </section>
+
     {{-- КАК ЭТО РАБОТАЕТ --}}
     <section class="border-t-2 border-ink bg-paper-deep">
         <div class="mx-auto max-w-6xl px-4 py-16 sm:px-6">
@@ -112,8 +149,8 @@
             <ol class="mt-10 grid gap-8 md:grid-cols-3">
                 <li class="border-t-4 border-ink pt-4">
                     <span class="inline-block bg-signal px-2 font-display text-3xl font-bold">01</span>
-                    <h3 class="mt-4 font-display text-xl font-semibold uppercase">Две машины</h3>
-                    <p class="mt-2 text-ink-soft">На экране появляются фото двух автомобилей и вопрос режима.</p>
+                    <h3 class="mt-4 font-display text-xl font-semibold uppercase">Уровень и дуэль</h3>
+                    <p class="mt-2 text-ink-soft">Выбираешь уровень: Новичок, Опытный или Профи. Чем выше уровень, тем ближе значения у двух машин.</p>
                 </li>
                 <li class="border-t-4 border-ink pt-4">
                     <span class="inline-block bg-signal px-2 font-display text-3xl font-bold">02</span>

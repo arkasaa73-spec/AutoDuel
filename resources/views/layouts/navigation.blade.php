@@ -15,8 +15,12 @@
         <nav class="hidden items-center gap-2 md:flex" aria-label="Основное меню">
             <a href="{{ url('/') }}" class="{{ $link }} {{ request()->is('/') ? $active : $idle }}">Главная</a>
             <a href="{{ url('/') }}#modes" class="{{ $link }} {{ $idle }}">Играть</a>
+            <a href="{{ route('leaderboard') }}" class="{{ $link }} {{ request()->routeIs('leaderboard') ? $active : $idle }}">Рейтинг</a>
             @auth
                 <a href="{{ route('dashboard') }}" class="{{ $link }} {{ request()->routeIs('dashboard') ? $active : $idle }}">Кабинет</a>
+                @if (Auth::user()->role === 'admin')
+                    <a href="{{ route('admin.cars.index') }}" class="{{ $link }} {{ request()->routeIs('admin.*') ? $active : $idle }}">Админка</a>
+                @endif
             @endauth
         </nav>
 
@@ -58,8 +62,12 @@
         <nav class="mx-auto flex max-w-6xl flex-col px-4 py-3 sm:px-6" aria-label="Мобильное меню">
             <a href="{{ url('/') }}" class="py-3 font-display uppercase tracking-wider">Главная</a>
             <a href="{{ url('/') }}#modes" @click="open = false" class="py-3 font-display uppercase tracking-wider">Играть</a>
+            <a href="{{ route('leaderboard') }}" class="py-3 font-display uppercase tracking-wider">Рейтинг</a>
             @auth
                 <a href="{{ route('dashboard') }}" class="py-3 font-display uppercase tracking-wider">Кабинет</a>
+                @if (Auth::user()->role === 'admin')
+                    <a href="{{ route('admin.cars.index') }}" class="py-3 font-display uppercase tracking-wider">Админка</a>
+                @endif
                 <a href="{{ route('profile.edit') }}" class="py-3 font-display uppercase tracking-wider">Профиль ({{ Auth::user()->name }})</a>
                 <form method="POST" action="{{ route('logout') }}">
                     @csrf

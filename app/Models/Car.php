@@ -17,12 +17,13 @@ class Car extends Model
         return Attribute::make(get: fn () => $this->brand . ' ' . $this->model);
     }
 
-    // Если фото ещё нет, показываем заглушку из public/images
+    // image_path хранится относительно папки public (например images/cars/toyota-corolla-2023.jpg).
+    // Если фото ещё нет, показываем заглушку
     protected function imageUrl(): Attribute
     {
         return Attribute::make(
             get: fn () => $this->image_path
-                ? asset('storage/' . $this->image_path)
+                ? asset($this->image_path)
                 : asset('images/car-placeholder.svg')
         );
     }

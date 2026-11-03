@@ -8,7 +8,9 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
-        $this->call(CarSeeder::class);
-        // UserSeeder (admin + игрок) добавим на этапе с Breeze
+        $this->call([
+            CarSeeder::class,
+            UserSeeder::class,
+        ]);
     }
 }
